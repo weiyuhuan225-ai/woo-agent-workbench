@@ -1,0 +1,2 @@
+source_id=demo-closeout; source_page=1; historical_fact=false
+公开合成样本：播放100次、曝光200次，不能加总为去重用户。年份未知。

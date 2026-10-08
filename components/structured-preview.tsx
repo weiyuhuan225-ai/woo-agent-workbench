@@ -1,0 +1,13 @@
+'use client';
+import {useState} from 'react';
+import type {V2Output} from '@/lib/v2-contract';
+import {layoutPages,layoutSvg,textValue} from '@/lib/layout-preview';
+export default function StructuredPreview({output,projectId,runId,approved,onSaved}:{output:V2Output;projectId:string;runId:string;approved:boolean;onSaved:()=>void}){
+ const [selected,setSelected]=useState(0),[saving,setSaving]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false),pages=layoutPages(output);
+ async function archive(page:number){setSaving(true);setError('');try{const r=await fetch('/api/agents/layout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_id:projectId,run_id:runId,page})});const d:any=await r.json();if(!r.ok)throw Error(d.error||'保存失败');setSaved(true);onSaved()}catch(e){setError((e as Error).message)}finally{setSaving(false)}}
+ if(output.agent_key==='script'&&Array.isArray(output.structured_output.shots))return <section className="structured-preview"><h3>分镜制作清单</h3><p className="context-note">真人拍摄与 AIGC 分开跟进；生成片段不代表完整成片。</p><div className="shot-preview">{output.structured_output.shots.map((s:any,i:number)=><article key={i}><div><strong>{textValue(s.id)}</strong><span className="badge">{s.type==='live'?'真人拍摄':'AIGC 生成'}</span></div><p>{textValue(s.timecode)} · {textValue(s.duration)} 秒</p><p>{textValue(s.visual)}</p><small>{textValue(s.status)}</small></article>)}</div></section>;
+ if(!pages.length)return null;
+ const page=pages[Math.min(selected,pages.length-1)],svg=layoutSvg(page);
+ function download(){const url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'})),a=document.createElement('a');a.href=url;a.download=`woo-layout-page-${page.page}-draft.svg`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+ return <section className="structured-preview"><div className="section-heading"><h3>{output.agent_key==='graphic'?'图文逐页预览':'海报文字排版预览'}</h3><button className="secondary" onClick={download}>下载本页 SVG 工作稿</button></div><p className="context-note">文字来自本次结构化结果。图片、正式 IP 和二维码需补齐；此稿用于审阅，不作为送印或已发布素材。</p><div className="media-heading"><button className="secondary" disabled={!approved||saving} onClick={()=>archive(page.page)}>{saving?'保存中…':'将本页排版存入素材库'}</button>{saved&&<span role="status">工作稿已归档，仍需素材审核。</span>}</div>{error&&<p className="form-error" role="alert">{error}</p>}<nav className="preview-pages" aria-label="预览页码">{pages.map((p,i)=><button key={i} aria-pressed={selected===i} onClick={()=>setSelected(i)}>第 {p.page} 页</button>)}</nav><div className="layout-preview" dangerouslySetInnerHTML={{__html:svg}}/><p className="context-note">{page.caption}</p></section>;
+}

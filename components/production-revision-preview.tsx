@@ -1,0 +1,8 @@
+'use client';
+import {useState} from 'react';
+const names:Record<string,string>={event_name:'活动名称',time:'时间',place:'地点',contact:'联系方式',mandatory:'必留文字'};
+export default function ProductionRevisionPreview({projectId,batchId,busy,onConfirm}:{projectId:string;batchId:string;busy:boolean;onConfirm:(plan:any,scope:string[])=>Promise<void>}){
+ const [plan,setPlan]=useState<any>(null),[scope,setScope]=useState<string[]>([]),[error,setError]=useState(''),[loading,setLoading]=useState(false);
+ async function preview(){setLoading(true);setError('');try{const r=await fetch('/api/production/'+batchId+'/revise?project_id='+encodeURIComponent(projectId)),p:any=await r.json();if(!r.ok)throw Error(p.error);setPlan(p);setScope(p.slots.map((s:any)=>s.slot))}catch(e){setError((e as Error).message)}finally{setLoading(false)}}
+ return <div className="production-artifact"><button className="secondary" disabled={busy||loading} onClick={preview}>查看修改影响与更新范围</button>{error&&<p role="alert">{error}</p>}{plan&&<><table><thead><tr><th>字段</th><th>原事实</th><th>新事实</th></tr></thead><tbody>{plan.fields.map((f:any)=><tr key={f.field}><td>{names[f.field]}</td><td>{f.before||'未填写'}</td><td>{f.after||'未填写'}</td></tr>)}</tbody></table><p>{plan.notice}</p><p>预计新增模型调用：文字 0 次，图片 0 次，视频 0 秒。{plan.video_effect}</p>{plan.slots.map((s:any)=><label className="execution-check" key={s.slot}><input type="checkbox" checked={scope.includes(s.slot)} onChange={e=>setScope(e.target.checked?[...scope,s.slot]:scope.filter(x=>x!==s.slot))}/><span>{s.slot} · {s.action}</span></label>)}<button className="primary" disabled={busy||!plan.supported||!scope.length} onClick={()=>onConfirm(plan,scope)}>确认所选范围并建立待审核版本</button></>}</div>;
+}

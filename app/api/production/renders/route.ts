@@ -1,0 +1,5 @@
+import {z} from 'zod';
+import {checkOrigin,failure,HttpError} from '@/lib/server';
+import {rendererCapability,listVideoRenders,submitVideoRender} from '@/lib/production-render';
+export async function GET(req:Request){try{const q=new URL(req.url).searchParams;return Response.json({capability:rendererCapability(),renders:await listVideoRenders(q.get('project_id')||'',q.get('script_id')||undefined)},{headers:{'Cache-Control':'no-store'}})}catch(e){return failure(e)}}
+export async function POST(req:Request){try{checkOrigin(req);const f=await req.formData(),v=z.object({project_id:z.string().min(1),request_id:z.string().uuid(),consent:z.literal('true')}).parse({project_id:f.get('project_id'),request_id:f.get('request_id'),consent:f.get('consent')}),file=f.get('file');if(!(file instanceof File)||file.size>64*1024*1024)throw new HttpError(413,'合成包需在64MB以内');return Response.json(await submitVideoRender(v.project_id,v.request_id,new Uint8Array(await file.arrayBuffer())))}catch(e){return failure(e)}}

@@ -1,0 +1,2 @@
+import {HttpError} from './server';
+export function taskTransition(old:any,next:any,at:string){const from=old?.status||'todo',to=next.status,reason=String(next.change_reason||'').trim();if(from==='done'&&to!=='done'&&reason.length<5)throw new HttpError(400,'撤回完成状态时请填写至少5字的理由');const history=[...(old?.completion_history||[])];if(from!==to&&(from==='done'||to==='done'))history.push({from,to,reason:from==='done'?reason:'人工确认完成',at,actor:'workspace-owner'});const {change_reason,...data}=next;return {...data,completion_history:history};}

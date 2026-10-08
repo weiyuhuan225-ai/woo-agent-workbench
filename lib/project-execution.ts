@@ -1,0 +1,15 @@
+import {z} from 'zod';
+const short=z.string().trim().max(300);const id=z.string().min(1).max(100);
+export const memberSchema=z.object({name:short.min(1),skills:short,notes:z.string().max(2000),active:z.boolean()});
+export const executionTaskId=z.string().max(100).default('');
+const checklist=z.array(z.object({id,title:short.min(1),done:z.boolean(),owner_id:id.optional(),due:z.string().max(10).refine(v=>!v||/^\d{4}-\d{2}-\d{2}$/.test(v),'请选择日期').optional(),channel:short.optional(),stage:z.enum(['planned','draft','awaiting_review','reviewed','completed']).optional(),change_reason:z.string().trim().max(2000).optional(),deliverable_ids:z.array(id).max(100).optional()})).max(100).refine(a=>new Set(a.map(x=>x.id)).size===a.length,'重复待办');
+export const executionSchema=z.object({assignments:z.array(z.object({member_id:id,name:short.min(1),role:short,confirmed:z.boolean()}).refine(a=>!a.confirmed||!!a.role.trim(),'确认分工前填写职责')).max(100).refine(a=>new Set(a.map(x=>x.member_id)).size===a.length,'重复成员'),material_prepared:z.array(z.object({material_id:id,signature:z.string().max(2000),quantity:z.number().finite().min(0).max(1000000)})).max(150).refine(a=>new Set(a.map(x=>x.material_id)).size===a.length).optional(),material_ready_ids:z.array(id).max(150).refine(a=>new Set(a).size===a.length),online:checklist,offline:checklist}).refine(v=>new Set([...v.online,...v.offline].map(t=>t.id)).size===v.online.length+v.offline.length,'线上线下任务标识不能重复');
+export type ExecutionPlan=z.infer<typeof executionSchema>;
+export const emptyExecution:ExecutionPlan={assignments:[],material_ready_ids:[],online:[],offline:[]};
+export function completion(done:number,total:number){return {done,total,percent:total?Math.round(done/total*100):0,label:total?`${done} / ${total} 已完成`:'尚未安排'}}
+
+export function materialSignature(line:any){return JSON.stringify([line.quantity,line.spec,line.unit,line.method])}
+export function preparedQuantity(plan:ExecutionPlan,line:any){if(plan.material_prepared!==undefined){const p=plan.material_prepared.find(x=>x.material_id===line.material_id);return p?.signature===materialSignature(line)?Math.min(p.quantity,line.quantity):0}return plan.material_ready_ids.includes(line.material_id)?line.quantity:0}
+export function materialProgress(plan:ExecutionPlan,lines:any[]){const done=lines.filter(l=>preparedQuantity(plan,l)>=l.quantity).length;return {...completion(done,lines.length),percent:lines.length?Math.round(lines.reduce((s,l)=>s+preparedQuantity(plan,l)/l.quantity,0)/lines.length*100):0,label:lines.length?`${done} / ${lines.length} 种已备齐（按各类到位比例计算）`:'尚未安排'}}
+export function linkedResults(task:any,items:any[]){const ids=new Set(task.deliverable_ids||[]);return items.filter(i=>['poster_batch','copywriting','media','asset','content','production_batch'].includes(i.type)&&(ids.has(i.id)||(i.data.execution_task_id||i.data.input?.execution_task_id||i.data.brief?.execution_task_id||i.data.copy?.execution_task_id)===task.id))}
+export function resultName(i:any){return i.data.input?.approved_brief?.theme||i.data.title||i.data.brief?.headline||i.data.input?.event||i.data.prompt||i.id}

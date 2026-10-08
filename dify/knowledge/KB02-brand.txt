@@ -1,0 +1,2 @@
+source_id=demo-brand; historical_fact=false
+演示品牌使用原创几何占位图，禁止自行编造官方IP、报名链接或功效。正式用途需批准参考资产。

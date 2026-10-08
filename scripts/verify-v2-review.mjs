@@ -1,0 +1,17 @@
+import {build} from 'esbuild';import {DatabaseSync} from 'node:sqlite';import assert from 'node:assert/strict';
+const db=new DatabaseSync(':memory:');db.exec('CREATE TABLE records(id TEXT PRIMARY KEY,project_id TEXT,type TEXT,data TEXT,revision INTEGER,created_at TEXT,updated_at TEXT);');
+const wrap=(sql,args=[])=>({bind(...v){return wrap(sql,v)},async first(){return db.prepare(sql).get(...args)||null},async run(){const r=db.prepare(sql).run(...args);return {meta:{changes:Number(r.changes)}}}});
+globalThis.v2TestEnv={DB:{prepare:sql=>wrap(sql),async batch(ss){db.exec('BEGIN');try{const out=[];for(const s of ss)out.push(await s.run());db.exec('COMMIT');return out}catch(e){db.exec('ROLLBACK');throw e}}}};
+const plugin={name:'test-env',setup(b){b.onResolve({filter:/^cloudflare:workers$/},()=>({path:'env',namespace:'test'}));b.onLoad({filter:/.*/,namespace:'test'},()=>({contents:'export const env=globalThis.v2TestEnv',loader:'js'}))}};
+for(const name of ['accept','reject'])await build({entryPoints:[`app/api/agents/${name}/route.ts`],bundle:true,platform:'node',format:'esm',outfile:`.sites-runtime/tests/v2-${name}.mjs`,plugins:[plugin]});
+const {POST:accept}=await import('../.sites-runtime/tests/v2-accept.mjs'),{POST:reject}=await import('../.sites-runtime/tests/v2-reject.mjs');
+const request=b=>new Request('https://test.work/api/agents/accept',{method:'POST',headers:{Origin:'https://test.work','Content-Type':'application/json'},body:JSON.stringify(b)});
+const base={status:'awaiting_review',key:'topic',project_revision:3,result:{title:'稿件',body:'可审核正文',evidence:['结案P11'],to_confirm:[],warnings:[]}};
+const insert=(id,data)=>db.prepare("INSERT INTO records VALUES(?,'woo','run',?,1,'t','t')").run(id,JSON.stringify(data));const get=id=>JSON.parse(db.prepare('SELECT data FROM records WHERE id=?').get(id).data);
+insert('live',base);const b={run_id:'live',project_id:'woo',kind:'topic'};
+assert.equal((await accept(request({...b,project_id:'other'}))).status,404);
+assert.equal((await accept(request(b))).status,200);assert.equal(get('live').review_status,'approved');assert.equal(get('live').review_history.length,1);assert.equal(get('accepted-live').upstream_run_id,'live');assert.equal(get('accepted-live').status,'draft');assert.equal((await accept(request(b))).status,200);assert.equal(get('live').review_history.length,1);
+assert.equal((await reject(request({...b,note:'审核通过后不允许退回'}))).status,400);
+insert('bad',base);assert.equal((await reject(request({run_id:'bad',project_id:'woo',note:'短'}))).status,400);assert.equal((await reject(request({run_id:'bad',project_id:'woo',note:'证据不充分，请补充来源'}))).status,200);assert.equal(get('bad').review_status,'rejected');assert.equal(get('bad').review_history[0].note,'证据不充分，请补充来源');assert.equal((await accept(request({...b,run_id:'bad'}))).status,400);assert.equal(db.prepare('SELECT COUNT(*) n FROM records WHERE id=?').get('accepted-bad').n,0);
+insert('mock',{...base,result:{...base.result,execution_mode:'mock'}});assert.equal((await accept(request({...b,run_id:'mock'}))).status,400);
+console.log('PASS: review approval/audit, idempotency, draft provenance, project isolation, rejection/audit, short-reason guard, rejected/mock approval blocked. No live model calls.');

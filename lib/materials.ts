@@ -1,0 +1,13 @@
+import {z} from 'zod';
+export const materialMethods={purchase:'采购',borrow:'借用',owned:'自有'} as const;
+export const materialCategories=['场地搭建','周边物料','互动道具','设备器材','耗材杂费'];
+const short=z.string().trim().max(300),price=z.number().finite().min(0).max(10000000).nullable();
+export const materialSchema=z.object({title:short.min(1).max(150),category:short.min(1),spec:short,unit:short.min(1).max(30),method:z.enum(['purchase','borrow','owned']),reference_price:price,supplier:short,source:short,notes:z.string().max(2000),active:z.boolean().default(true)});
+export const procurementLine=z.object({material_id:z.string().min(1).max(100),title:short.min(1),category:short,spec:short,unit:short.min(1).max(30),method:z.enum(['purchase','borrow','owned']),quantity:z.number().finite().positive().max(1000000),unit_price:price,shipping:z.number().finite().min(0).max(10000000),supplier:short,source:short,notes:z.string().max(2000)});
+export const procurementSchema=z.object({name:short.min(1).max(150),lines:z.array(procurementLine).max(150)}).superRefine((v,c)=>{if(new Set(v.lines.map(l=>l.material_id)).size!==v.lines.length)c.addIssue({code:'custom',path:['lines'],message:'物料不能重复选择'})});
+export type Material=z.infer<typeof materialSchema>;
+export type ProcurementLine=z.infer<typeof procurementLine>;
+export function selectMaterial(id:string,m:Material):ProcurementLine{return {material_id:id,title:m.title,category:m.category,spec:m.spec,unit:m.unit,method:m.method,quantity:1,unit_price:m.reference_price,shipping:0,supplier:m.supplier,source:m.source,notes:m.notes}}
+export function lineCents(l:ProcurementLine){return l.unit_price===null?null:Math.round(l.quantity*l.unit_price*100)+Math.round(l.shipping*100)}
+export function procurementTotals(lines:ProcurementLine[]){return {known_cents:lines.reduce((s,l)=>s+(lineCents(l)??Math.round(l.shipping*100)),0),unpriced:lines.filter(l=>l.unit_price===null).length,count:lines.length}}
+export function procurementCsv(name:string,lines:ProcurementLine[]){const safe=(v:unknown)=>{let s=String(v??'');if(/^[\s]*[=+@\-]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"'};const totals=procurementTotals(lines);const rows:unknown[][]=[['活动 / 项目',name],['清单说明',totals.unpriced?'存在待询价物料；已知金额不代表完整预算':'预算估算，采购前核对本次报价'],['物料','类别','规格','需求数量','单位','取得方式','本次参考单价（元）','本次运费（元）','预计金额（元）','参考供应 / 借出单位','来源','备注'],...lines.map(l=>[l.title,l.category,l.spec,l.quantity,l.unit,materialMethods[l.method],l.unit_price,l.shipping,lineCents(l)===null?'待询价':lineCents(l)!/100,l.supplier,l.source,l.notes]),['已知金额（含已填运费）',totals.known_cents/100],['待询价物料项数',totals.unpriced]];return '\uFEFF'+rows.map(r=>r.map(safe).join(',')).join('\r\n')}

@@ -1,0 +1,7 @@
+import {database,initialize,now,record,HttpError} from './server';
+import {materialSeeds} from './materials-seed';
+import {materialSchema,procurementSchema} from './materials';
+export const catalogProject='woo-original';
+export async function initializeMaterials(){await initialize();const db=database(),marker='system-materials-catalog-closeout-v1';if(await db.prepare('SELECT id FROM records WHERE id=?').bind(marker).first())return;const t=now();await db.batch([...materialSeeds.map(m=>db.prepare("INSERT OR IGNORE INTO records (id,project_id,type,data,revision,created_at,updated_at) VALUES (?,?,'material',?,1,?,?)").bind(m.id,catalogProject,JSON.stringify(materialSchema.parse(m.data)),t,t)),db.prepare("INSERT OR IGNORE INTO records (id,project_id,type,data,revision,created_at,updated_at) VALUES (?,?,'system','{}',1,?,?)").bind(marker,catalogProject,t,t)])}
+export async function readProcurement(projectId:string){const project=await database().prepare('SELECT * FROM projects WHERE id=?').bind(projectId).first<any>();if(!project)throw new HttpError(404,'项目不存在');const r=await database().prepare("SELECT * FROM records WHERE id=? AND project_id=? AND type='procurement'").bind('procurement-'+projectId,projectId).first<any>();return r?{id:r.id,revision:r.revision,...procurementSchema.parse(JSON.parse(r.data))}:{id:'procurement-'+projectId,revision:0,name:project.name+' · 配套物料',lines:[]}}
+export async function materialRecord(id:string){const r=await record(id,catalogProject);if(r.type!=='material')throw new HttpError(400,'物料不在共享物料池中');return r}

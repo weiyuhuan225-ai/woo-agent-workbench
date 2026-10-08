@@ -1,0 +1,2 @@
+source_id=demo-channels; historical_fact=false
+内部模板：标题、正文、标签分别编辑；生成稿先待审核，不自动发布。不保证流量。

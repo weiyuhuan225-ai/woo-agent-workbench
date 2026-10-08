@@ -1,0 +1,4 @@
+import {failure,checkOrigin,HttpError} from '@/lib/server';
+import {saveProductionDelivery,listProductionDeliveries} from '@/lib/production-delivery';
+export async function GET(req:Request,{params}:{params:Promise<{id:string}>}){try{return Response.json(await listProductionDeliveries(new URL(req.url).searchParams.get('project_id')||'',(await params).id),{headers:{'Cache-Control':'no-store'}})}catch(e){return failure(e)}}
+export async function POST(req:Request,{params}:{params:Promise<{id:string}>}){try{checkOrigin(req);if(Number(req.headers.get('content-length'))>33*1024*1024)throw new HttpError(413,'归档包过大');const form=await req.formData(),project=form.get('project_id'),file=form.get('file');if(typeof project!=='string'||!(file instanceof File)||file.size>32*1024*1024)throw new HttpError(400,'归档文件无效或过大');return Response.json(await saveProductionDelivery(project,(await params).id,new Uint8Array(await file.arrayBuffer())),{status:201})}catch(e){return failure(e)}}

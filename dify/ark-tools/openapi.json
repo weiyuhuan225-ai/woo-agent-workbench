@@ -1,0 +1,346 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "WOO Ark production tools",
+    "version": "0.3-reference-media",
+    "description": "Existing workbench Ark operations for Dify migration. Models are supplied explicitly; no automatic media generation before human approval."
+  },
+  "servers": [
+    {
+      "url": "https://ark.cn-beijing.volces.com/api/v3"
+    }
+  ],
+  "security": [
+    {
+      "ArkBearer": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ArkBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "paths": {
+    "/images/generations": {
+      "post": {
+        "operationId": "ark_generate_image",
+        "summary": "Create one image only after approved design specification; watermark retained.",
+        "description": "Create one image only after approved design specification; watermark retained.",
+        "responses": {
+          "200": {
+            "description": "Provider response. Validate status and retain request/model/usage; URL is not a persisted asset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "string",
+                    "default": "2K"
+                  },
+                  "response_format": {
+                    "type": "string",
+                    "enum": [
+                      "url",
+                      "b64_json"
+                    ],
+                    "default": "url"
+                  },
+                  "watermark": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "image": {
+                    "type": "string",
+                    "description": "Optional single reference image as data:image/png;base64,... or data:image/jpeg;base64,...; leave unset for text-to-image."
+                  }
+                },
+                "required": [
+                  "model",
+                  "prompt"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contents/generations/tasks": {
+      "post": {
+        "operationId": "ark_create_video_task",
+        "summary": "Create an asynchronous video task after approved shot; save returned id and never resubmit unknown-status tasks.",
+        "description": "Create an asynchronous video task after approved shot; save returned id and never resubmit unknown-status tasks.",
+        "responses": {
+          "200": {
+            "description": "Provider response. Validate status and retain request/model/usage; URL is not a persisted asset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "text",
+                            "image_url"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "image_url": {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "first_frame"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "text"
+                      ]
+                    }
+                  },
+                  "duration": {
+                    "type": "integer",
+                    "enum": [
+                      5
+                    ]
+                  },
+                  "resolution": {
+                    "type": "string",
+                    "default": "720p"
+                  },
+                  "ratio": {
+                    "type": "string",
+                    "enum": [
+                      "16:9",
+                      "9:16",
+                      "1:1"
+                    ]
+                  },
+                  "watermark": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                },
+                "required": [
+                  "model",
+                  "content",
+                  "duration"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contents/generations/tasks/{id}": {
+      "get": {
+        "operationId": "ark_get_video_task",
+        "summary": "Query an existing task; terminal success must be followed by authorized download and asset persistence.",
+        "description": "Query an existing task; terminal success must be followed by authorized download and asset persistence.",
+        "responses": {
+          "200": {
+            "description": "Provider response. Validate status and retain request/model/usage; URL is not a persisted asset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[-a-zA-Z0-9_]+$"
+            }
+          }
+        ]
+      }
+    },
+    "/responses": {
+      "post": {
+        "operationId": "ark_search_sources",
+        "summary": "Search official sources; preserve citation URL, publish date and quoted passage. Research output needs source verification.",
+        "description": "Search official sources; preserve citation URL, publish date and quoted passage. Research output needs source verification.",
+        "responses": {
+          "200": {
+            "description": "Provider response. Validate status and retain request/model/usage; URL is not a persisted asset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "web_search"
+                          ]
+                        },
+                        "sources": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "search_engine"
+                            ]
+                          }
+                        },
+                        "limit": {
+                          "type": "integer",
+                          "default": 5
+                        },
+                        "max_keyword": {
+                          "type": "integer",
+                          "default": 2
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ]
+                    }
+                  },
+                  "max_output_tokens": {
+                    "type": "integer",
+                    "default": 4000
+                  },
+                  "input": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "user"
+                          ]
+                        },
+                        "content": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "input_text"
+                                ]
+                              },
+                              "text": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "text"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "content"
+                      ]
+                    }
+                  },
+                  "thinking": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "disabled"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type"
+                    ]
+                  }
+                },
+                "required": [
+                  "model",
+                  "tools",
+                  "input"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

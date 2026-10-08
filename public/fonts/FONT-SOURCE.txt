@@ -1,0 +1,6 @@
+WOO Noto CJK SC GB2312 + Latin subset, 7811 encoded characters.
+Derived from Noto Sans CJK SC Sans2.004 under SIL OFL 1.1.
+Source: https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf
+Source SHA-256: 2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b
+Derived SHA-256: 8718450eae59cfb3cdf6a92905835d5b406155c23a6425d4ed219f7de30f1762
+Unsupported characters must block rendering instead of using fallback glyphs.

@@ -1,0 +1,9 @@
+import {z} from 'zod';
+import {agentKeys} from './agent-contract';
+export const sourceSchema=z.object({id:z.string().min(1),version:z.string().min(1),date:z.string().nullable(),type:z.enum(['closeout','brand','plan','channel','project','external']),confidence:z.enum(['documented','approved','unverified']),text:z.string().max(50000).optional(),page:z.string().optional()});
+export const requestSchema=z.object({schema_version:z.literal('2.1'),run_id:z.string().uuid(),agent_key:z.enum(agentKeys),agent_version:z.string().min(1),project_context:z.object({project_id:z.string().min(1),revision:z.number().int().positive(),name:z.string(),brief:z.string()}),source_set:z.array(sourceSchema).min(1),project_data:z.record(z.unknown()).optional(),task:z.object({instruction:z.string().min(5).max(3000),upstream_run_ids:z.array(z.string()).default([])})});
+export const outputSchema=z.object({schema_version:z.literal('2.1'),run_id:z.string(),agent_key:z.enum(agentKeys),agent_version:z.string(),execution_mode:z.enum(['mock','live']),review_status:z.enum(['awaiting_review','needs_clarification']),title:z.string().min(1),readable_text:z.string().max(50000),structured_output:z.record(z.unknown()),assumptions:z.array(z.string()),conflicts:z.array(z.string()),evidence:z.array(z.object({source_id:z.string(),quote:z.string(),page:z.preprocess(v=>v===null||v===''?undefined:v,z.string().optional())})),next_action:z.string(),source_set:z.array(sourceSchema),validation_errors:z.array(z.string()).default([])});
+export type V2Request=z.infer<typeof requestSchema>;
+export type V2Output=z.infer<typeof outputSchema>;
+// A simulated result never crosses the business approval boundary.
+export function canApproveV2(output:V2Output){return output.execution_mode==='live'&&output.review_status==='awaiting_review'&&!output.validation_errors.length}

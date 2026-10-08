@@ -1,0 +1,31 @@
+import {z} from 'zod';
+import {bucket,database,record,HttpError,now} from './server';
+import {sharedIP} from './execution-server';
+import {stableJson} from './production-batch';
+import {sha256} from './production-content';
+import {loadProductionArtifact,type ProductionArtifact} from './production-server';
+import {mutateBatch} from './production-store';
+import {copyTags,copyText,completeCopy} from './copywriting';
+import {copyChecks} from './production-plan';
+export const artifactEditSchema=z.object({project_id:z.string().min(1),revision:z.number().int().positive(),hash:z.string().regex(/^[a-f0-9]{64}$/),request_id:z.string().uuid(),reason:z.string().trim().min(5).max(1000),title:z.string().trim().max(200).optional(),body:z.string().trim().min(1).max(10000).optional(),tags:z.array(z.enum(copyTags)).max(3).optional(),observation:z.string().trim().min(1).max(3000).optional(),headline:z.string().trim().min(1).max(150).optional(),details:z.array(z.string().min(1).max(6000)).min(1).max(20).optional(),logo_asset_id:z.string().max(200).optional(),qr_url:z.string().max(500).optional(),consent:z.literal(true)}).strict();
+export async function validateArtifactDependencies(project:string,batch:string,a:ProductionArtifact){for(const dep of a.upstream||[]){const current=await loadProductionArtifact(project,batch,dep.slot);if(current.job.artifact?.sha256!==dep.sha256)throw new HttpError(409,'图片观察已纠正，此文案使用了旧观察。请核对并保存改字版本后重新审核。')}}
+export async function editProductionArtifact(batchId:string,slot:string,raw:unknown){
+ const r=artifactEditSchema.parse(raw),loaded=await loadProductionArtifact(r.project_id,batchId,slot),{batch,job,artifact:old}=loaded;
+ const request_sha256=await sha256(stableJson(r)),target=batchId+'-'+slot+'-edit-'+r.request_id;if(old.id===target){if(old.manual_edit?.request_sha256===request_sha256)return batch;throw new HttpError(409,'修改编号已用于另一份文字。')}
+ if(batch.revision!==r.revision||job.artifact!.sha256!==r.hash||job.state!=='succeeded')throw new HttpError(409,'产物或批次版本已经改变，请刷新后编辑。');
+ const preparedAt=now(),operationId='production-edit-'+r.request_id;await database().prepare("INSERT OR IGNORE INTO records VALUES (?,?,'production_edit',?,1,?,?)").bind(operationId,r.project_id,JSON.stringify({batch_id:batchId,slot,request_sha256,at:preparedAt}),preparedAt,preparedAt).run();const operation=await record(operationId,r.project_id);if(operation.data.batch_id!==batchId||operation.data.slot!==slot||operation.data.request_sha256!==request_sha256)throw new HttpError(409,'修改编号已用于另一份操作。');const at=operation.data.at;
+ const value:ProductionArtifact={...old,id:target,created_at:at,manual_edit:{parent_id:old.id,parent_sha256:r.hash,request_sha256,reason:r.reason,at,model_calls:0}};
+ const a=batch.data.input.activity;
+ if(old.copy){if(r.title===undefined||r.body===undefined||r.observation!==undefined||r.headline!==undefined||r.details!==undefined||r.logo_asset_id!==undefined||r.qr_url!==undefined)throw new HttpError(400,'文案编辑需要标题和正文。');const input={title:r.title,body:r.body},added_fields=copyChecks(input,a),c=completeCopy(input,{required_text:a.mandatory,time:a.time,location:a.place,contact:a.contact}),tags=copyTags.filter(t=>(r.tags||old.copy!.tags).includes(t));value.copy={...c,platform:old.copy.platform,tags,added_fields,text:copyText(old.copy.platform,c.title,c.body,tags)};
+  if(slot==='copy-douyin'&&batch.data.input.image_grounding){const obs=await loadProductionArtifact(r.project_id,batchId,'vision-poster-1');value.upstream=[{slot:'vision-poster-1',sha256:obs.job.artifact!.sha256}]}
+ }else if(old.kind==='observation'){if(r.observation===undefined||r.title!==undefined||r.body!==undefined||r.headline!==undefined||r.details!==undefined||r.tags!==undefined||r.logo_asset_id!==undefined||r.qr_url!==undefined)throw new HttpError(400,'请填写核对后的画面观察。');value.observation=r.observation;
+ }else if(old.layout){if(!r.headline||!r.details||r.title!==undefined||r.body!==undefined||r.observation!==undefined||r.tags!==undefined)throw new HttpError(400,'海报编辑需要标题和详情文字。');const missing=copyChecks({title:r.headline,body:r.details.join('\n')},a);if(missing.length)throw new HttpError(400,'文字层必须逐字保留：'+missing.map(x=>x.value).join('；'));value.layout={...old.layout,headline:r.headline,details:r.details};
+  if(r.logo_asset_id!==undefined){if(r.logo_asset_id){const l=await sharedIP(r.logo_asset_id),o=await bucket().get(l.data.storage_key);if(!o)throw new HttpError(404,'LOGO文件不存在');value.layout.logo={asset_id:l.id,revision:l.revision,sha256:await sha256(await o.arrayBuffer()),x:64,y:1440-64-180,width:180,height:120}}else delete value.layout.logo}
+  if(r.qr_url!==undefined){if(r.qr_url){let u:URL;try{u=new URL(r.qr_url)}catch{throw new HttpError(400,'二维码需为完整网址')}if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw new HttpError(400,'二维码需为无登录凭据的HTTP/HTTPS网址');value.layout.qr={url:r.qr_url,x:1080-64-180,y:1440-64-180,size:180}}else delete value.layout.qr}
+
+ }else throw new HttpError(400,'此产物不支持人工改字。');
+ const encoded=JSON.stringify(value),hash=await sha256(encoded),key='_private/production-artifact/'+value.id,existing=await bucket().get(key);if(existing&&await existing.text()!==encoded)throw new HttpError(409,'修改编号已使用，请重新读取当前产物。');await bucket().put(key,encoded,{httpMetadata:{contentType:'application/json'}});
+ const next={id:value.id,sha256:hash,input_hash:batch.data.input_hash,workflow_run_id:old.workflow_run_id};
+ return mutateBatch(r.project_id,batchId,r.revision,b=>({...b,jobs:b.jobs.map(j=>j.slot===slot?{...j,artifact:next,review:'pending',artifact_history:[...(j.artifact_history||[]),{artifact:j.artifact!,review:j.review,reviews:j.reviews||[],at,reason:r.reason}]}:j)}));
+}
+export async function artifactHistory(project:string,batch:string,slot:string,verified?:Awaited<ReturnType<typeof loadProductionArtifact>>){const loaded=verified||await loadProductionArtifact(project,batch,slot),history=[];for(const entry of loaded.job.artifact_history||[]){const object=await bucket().get('_private/production-artifact/'+entry.artifact.id);if(!object)throw new HttpError(404,'旧产物文件不存在');const text=await object.text();if(await sha256(text)!==entry.artifact.sha256)throw new HttpError(409,'旧产物哈希校验失败');history.push({...entry,data:JSON.parse(text) as ProductionArtifact})}return history}
